@@ -60,4 +60,4 @@
 
 На сколько процентов изменится суммарная прибыль, если увеличить ARPU на 10%?
 
-Сcылка на проект [проект 2 2](https://github.com/LidiyaZimenkova/first-repository/blob/main/Когортный%20анализ.xlsx)
+Сcылка на проект [проект 2](https://github.com/LidiyaZimenkova/first-repository/blob/main/Когортный%20анализ.xlsx)
