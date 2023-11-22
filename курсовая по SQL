@@ -1,0 +1,86 @@
+with first_payments as --шаг1
+    (select user_id
+           ,min(transaction_datetime ::date) as first_payment_date 
+from skyeng_db.Payments
+where status_name='success'
+group by user_id
+    ),
+    
+    all_dates as --шаг 2
+    
+    (select distinct date(class_start_datetime) as dt
+    from skyeng_db.Classes
+    where date_part('year', class_start_datetime)=2016
+    order by  dt
+    ),
+    all_dates_by_user as--шаг 3
+    
+    (select user_id
+           ,dt
+    from first_payments
+    join all_dates
+    on first_payment_date<=dt
+    order by user_id,dt
+    ),
+    payments_by_dates as--шаг 4
+    
+    (select user_id
+           ,date(transaction_datetime) as payment_date
+           ,sum(Classes) as transaction_balance_change
+    from skyeng_db.Payments
+    where status_name='success'
+    group by user_id,payment_date
+    order by user_id,payment_date),
+    
+    payments_by_dates_cumsum as --шаг 5
+    (select adu.user_id
+           ,dt
+           ,coalesce(transaction_balance_change,0) as transaction_balance_change
+           ,sum(coalesce(transaction_balance_change,0)) over (partition by adu.user_id order by dt) as transaction_balance_change_cs
+        
+    from all_dates_by_user as adu
+    left join payments_by_dates as pd
+    on dt=payment_date
+    and adu.user_id=pd.user_id
+    order by adu.user_id,payment_date),
+    
+    classes_by_dates as --шаг 6
+    (select user_id
+           ,class_start_datetime :: date as class_date
+           ,count (id_class)*(-1) as classes
+    from skyeng_db.Classes
+    where class_type <>'trial'
+    and class_status in ('success','failed_by_student')
+    group by user_id,class_date
+   ),
+   classes_by_dates_dates_cumsum as --шаг 7
+   (select adu.user_id
+          ,dt
+          ,coalesce(classes,0) as classes
+          ,sum(coalesce(classes,0)) over (partition by adu.user_id order by dt)as classes_cs
+   from all_dates_by_user as adu
+   left join classes_by_dates as cd
+   on dt=class_date
+   and adu.user_id=cd.user_id
+   ),
+   balances as --шаг 8
+   (select user_id
+          ,dt
+          ,transaction_balance_change
+          ,transaction_balance_change_cs
+          ,classes
+          ,classes_cs
+          ,(classes_cs + transaction_balance_change_cs) as balance
+   from payments_by_dates_cumsum as pdc
+    join  classes_by_dates_dates_cumsum as cdc
+    using(user_id,dt)
+    order by user_id,dt)
+select dt --шаг 9
+    ,sum(transaction_balance_change) as transaction_balance_change 
+    ,sum(transaction_balance_change_cs) as transaction_balance_change_cs
+    ,sum(classes) as classes
+    ,sum(classes_cs) as classes_cs
+    ,sum(balance) as balance
+from   balances
+group by dt
+order by dt
